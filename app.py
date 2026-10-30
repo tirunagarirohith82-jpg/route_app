@@ -7,15 +7,13 @@ import base64
 
 st.set_page_config(page_title="Route Map App", layout="wide")
 
-# Custom CSS to ensure prompts, labels, and text elements are crisp and visible
+# Custom CSS for UI visibility across light and dark modes
 st.markdown("""
     <style>
-    /* Ensure text prompts and input labels are crisp and visible */
     .stSelectbox label, .stFileUploader label, .stMarkdown p {
         color: #FFFFFF !important;
         font-weight: 500 !important;
     }
-    /* Info box styling */
     div[data-testid="stNotification"] {
         background-color: #1E293B !important;
         border: 1px solid #334155 !important;
@@ -29,7 +27,7 @@ st.title("🗺️ Asset Route Map Navigator")
 DEFAULT_FILE = "route.xlsx"
 df = None
 
-# 1. Automatically load default file
+# 1. Automatically load default dataset
 if os.path.exists(DEFAULT_FILE):
     df = pd.read_excel(DEFAULT_FILE)
     st.info(f"📁 Automatically loaded default file: `{DEFAULT_FILE}`")
@@ -39,7 +37,7 @@ uploaded_file = st.file_uploader("Or upload a different Excel file (.xlsx)", typ
 if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
 
-# Helper function to get base64 encoded image string for HTML tooltips
+# Base64 image loader function
 def get_image_base64(asset_info):
     raw_img_name = str(asset_info.get('image_path', '')).strip()
     img_file = os.path.basename(raw_img_name)
@@ -75,32 +73,40 @@ if df is not None:
     if required_cols.issubset(df.columns):
         st.success(f"Successfully loaded {len(df)} asset locations!")
 
-        # Initialize session state for synced asset selection across map clicks and selectbox
+        # Initialize session state tracking
         if "selected_asset" not in st.session_state or st.session_state.selected_asset not in df["name"].values:
-            st.session_state.selected_asset = df["name"].iloc[0]
+            st.session_state.selected_asset = None  # None = Initial overview state
 
         col1, col2 = st.columns([2, 1])
 
-        # Active asset coordinates
-        asset_info = df[df["name"] == st.session_state.selected_asset].iloc[0]
-        center_lat = asset_info["lat"]
-        center_lon = asset_info["lon"]
+        # Determine map view coordinates & zoom level
+        if st.session_state.selected_asset is None:
+            # Shared link / Initial load: Center on entire network average with wide view
+            center_lat = df["lat"].mean()
+            center_lon = df["lon"].mean()
+            zoom_level = 8
+        else:
+            # User clicked or searched an asset: Zoom into asset location
+            asset_info = df[df["name"] == st.session_state.selected_asset].iloc[0]
+            center_lat = asset_info["lat"]
+            center_lon = asset_info["lon"]
+            zoom_level = 12
 
         with col1:
             m = folium.Map(
                 location=[center_lat, center_lon],
-                zoom_start=12,  # Auto-zoomed focused view on active asset
+                zoom_start=zoom_level,
                 tiles="OpenStreetMap"
             )
 
-            # Separate dataframe by network keywords
+            # Separate transmission routes
             srisailam_df = df[df["name"].str.contains("Srisailam|Srisailm|srisailam", case=False, na=False)]
             nsagar_df = df[df["name"].str.contains("Nagarjuna|Nagarjunasagar|nagarjuna", case=False, na=False)]
             mgit_df = df[df["name"].str.contains("MGIT|Mahatma Gandhi", case=False, na=False)]
 
             mgit_coord = mgit_df[["lat", "lon"]].values.tolist() if not mgit_df.empty else []
 
-            # 1. Srisailam Route to MGIT (Red Line)
+            # 1. Red Route: Srisailam to MGIT
             if not srisailam_df.empty:
                 s_coords = srisailam_df[["lat", "lon"]].values.tolist()
                 if mgit_coord and mgit_coord[0] not in s_coords:
@@ -113,7 +119,7 @@ if df is not None:
                     tooltip="Srisailam ➔ MGIT Transmission Line"
                 ).add_to(m)
 
-            # 2. Nagarjuna Sagar Route to MGIT (Deep Blue Line)
+            # 2. Blue Route: Nagarjuna Sagar to MGIT
             if not nsagar_df.empty:
                 ns_coords = nsagar_df[["lat", "lon"]].values.tolist()
                 if mgit_coord and mgit_coord[0] not in ns_coords:
@@ -126,7 +132,7 @@ if df is not None:
                     tooltip="Nagarjuna Sagar ➔ MGIT Transmission Line"
                 ).add_to(m)
 
-            # 3. Add markers for each asset
+            # 3. Add asset markers
             for idx, row in df.iterrows():
                 asset_name = str(row["name"]).lower()
                 is_selected = (row["name"] == st.session_state.selected_asset)
@@ -172,7 +178,7 @@ if df is not None:
                     popup=popup_obj
                 ).add_to(m)
 
-            # Properly terminated multiline HTML legend string
+            # High-Contrast Map Legend
             legend_html = """
             <div style="position: fixed; bottom: 30px; left: 30px; width: 250px; 
                         background-color: rgba(255, 255, 255, 0.95); border: 2px solid #333; z-index: 9999; 
@@ -195,10 +201,9 @@ if df is not None:
             """
             m.get_root().html.add_child(folium.Element(legend_html))
 
-            # Render map and catch click events
+            # Render map and record marker click events
             map_data = st_folium(m, width="100%", height=600, key=f"map_{st.session_state.selected_asset}")
 
-            # Update session state if user clicks a marker directly on the map
             if map_data and map_data.get("last_object_clicked_popup"):
                 clicked_popup = map_data["last_object_clicked_popup"]
                 for name in df["name"].unique():
@@ -209,25 +214,38 @@ if df is not None:
         with col2:
             st.subheader("🖼️ Selected Asset Details")
             
-            # Selectbox bound to session state for seamless two-way interaction
-            selected = st.selectbox(
+            # Asset selector options with an overview default choice
+            asset_options = ["-- View Entire Network --"] + list(df["name"].unique())
+            
+            current_index = 0
+            if st.session_state.selected_asset in df["name"].values:
+                current_index = asset_options.index(st.session_state.selected_asset)
+
+            selected_option = st.selectbox(
                 "Select an Asset to inspect:",
-                options=df["name"].unique(),
-                index=list(df["name"].unique()).index(st.session_state.selected_asset)
+                options=asset_options,
+                index=current_index
             )
 
-            if selected != st.session_state.selected_asset:
-                st.session_state.selected_asset = selected
-                st.rerun()
-
-            st.write(f"**Asset Type:** {asset_info.get('type', 'N/A')}")
-            st.write(f"**Latitude:** {asset_info['lat']}")
-            st.write(f"**Longitude:** {asset_info['lon']}")
-
-            img_src = get_image_base64(asset_info)
-            if img_src:
-                st.image(img_src, caption=asset_info["name"], use_container_width=True)
+            if selected_option == "-- View Entire Network --":
+                if st.session_state.selected_asset is not None:
+                    st.session_state.selected_asset = None
+                    st.rerun()
+                st.info("Showing complete transmission route overview.")
             else:
-                st.warning("Image file not found in the `images` folder.")
+                if selected_option != st.session_state.selected_asset:
+                    st.session_state.selected_asset = selected_option
+                    st.rerun()
+
+                asset_info = df[df["name"] == st.session_state.selected_asset].iloc[0]
+                st.write(f"**Asset Type:** {asset_info.get('type', 'N/A')}")
+                st.write(f"**Latitude:** {asset_info['lat']}")
+                st.write(f"**Longitude:** {asset_info['lon']}")
+
+                img_src = get_image_base64(asset_info)
+                if img_src:
+                    st.image(img_src, caption=asset_info["name"], use_container_width=True)
+                else:
+                    st.warning("Image file not found in the `images` folder.")
     else:
         st.error("Missing required columns: 'Asset Name', 'Latitude', or 'Longitude'.")
