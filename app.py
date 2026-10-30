@@ -75,32 +75,21 @@ if df is not None:
     if required_cols.issubset(df.columns):
         st.success(f"Successfully loaded {len(df)} asset locations!")
 
+        # Initialize session state for synced asset selection across map clicks and selectbox
+        if "selected_asset" not in st.session_state:
+            st.session_state.selected_asset = df["name"].iloc[0]
+
         col1, col2 = st.columns([2, 1])
 
-        # Move asset selection to the top of column 2 so map view reacts to it
-        with col2:
-            st.subheader("🖼️ Selected Asset Details")
-            selected_asset = st.selectbox("Select an Asset to inspect:", df["name"].unique())
-            
-            asset_info = df[df["name"] == selected_asset].iloc[0]
-            st.write(f"**Asset Type:** {asset_info.get('type', 'N/A')}")
-            st.write(f"**Latitude:** {asset_info['lat']}")
-            st.write(f"**Longitude:** {asset_info['lon']}")
-
-            img_src = get_image_base64(asset_info)
-            if img_src:
-                st.image(img_src, caption=asset_info["name"], use_container_width=True)
-            else:
-                st.warning("Image file not found in the `images` folder.")
+        # Active asset coordinates
+        asset_info = df[df["name"] == st.session_state.selected_asset].iloc[0]
+        center_lat = asset_info["lat"]
+        center_lon = asset_info["lon"]
 
         with col1:
-            # Dynamically set map center to the selected asset's coordinates and zoom in
-            center_lat = asset_info["lat"]
-            center_lon = asset_info["lon"]
-            
             m = folium.Map(
                 location=[center_lat, center_lon],
-                zoom_start=12,  # Auto-zoomed focused view on selected asset
+                zoom_start=12,  # Auto-zoomed focused view on active asset
                 tiles="OpenStreetMap"
             )
 
@@ -109,7 +98,6 @@ if df is not None:
             nsagar_df = df[df["name"].str.contains("Nagarjuna|Nagarjunasagar|nagarjuna", case=False, na=False)]
             mgit_df = df[df["name"].str.contains("MGIT|Mahatma Gandhi", case=False, na=False)]
 
-            # Locate MGIT coordinate as central termination point
             mgit_coord = mgit_df[["lat", "lon"]].values.tolist() if not mgit_df.empty else []
 
             # 1. Srisailam Route to MGIT (Red Line)
@@ -119,7 +107,7 @@ if df is not None:
                     s_coords.append(mgit_coord[0])
                 folium.PolyLine(
                     s_coords,
-                    color="#E63946",  # Red
+                    color="#E63946",
                     weight=5,
                     opacity=0.9,
                     tooltip="Srisailam ➔ MGIT Transmission Line"
@@ -132,16 +120,16 @@ if df is not None:
                     ns_coords.append(mgit_coord[0])
                 folium.PolyLine(
                     ns_coords,
-                    color="#1D3557",  # Deep Blue
+                    color="#1D3557",
                     weight=5,
                     opacity=0.9,
                     tooltip="Nagarjuna Sagar ➔ MGIT Transmission Line"
                 ).add_to(m)
 
-            # 3. Add markers with hover and auto-opened popup for selected asset
+            # 3. Add markers for each asset
             for idx, row in df.iterrows():
                 asset_name = str(row["name"]).lower()
-                is_selected = (row["name"] == selected_asset)
+                is_selected = (row["name"] == st.session_state.selected_asset)
 
                 if "mgit" in asset_name or "mahatma gandhi" in asset_name:
                     marker_color = "#2A9D8F"
@@ -171,13 +159,12 @@ if df is not None:
                 </div>
                 """
 
-                # Highlight selected marker and open popup automatically
                 popup_obj = folium.Popup(card_html, max_width=220, show=is_selected)
 
                 folium.CircleMarker(
                     location=[row["lat"], row["lon"]],
                     radius=12 if is_selected else (8 if "mgit" in asset_name else 6),
-                    color="#FFD700" if is_selected else marker_color,  # Gold border highlight for selected asset
+                    color="#FFD700" if is_selected else marker_color,
                     fill=True,
                     fill_color=marker_color,
                     fill_opacity=1.0 if is_selected else 0.8,
@@ -195,19 +182,3 @@ if df is not None:
                 <div style="margin-bottom: 6px;">
                     <i style="background:#E63946; width:18px; height:4px; display:inline-block; margin-right:8px; vertical-align:middle;"></i>
                     <span style="color:#000; font-weight:600;">Srisailam ➔ MGIT</span>
-                </div>
-                <div style="margin-bottom: 6px;">
-                    <i style="background:#1D3557; width:18px; height:4px; display:inline-block; margin-right:8px; vertical-align:middle;"></i>
-                    <span style="color:#000; font-weight:600;">Nagarjuna Sagar ➔ MGIT</span>
-                </div>
-                <div>
-                    <i style="background:#2A9D8F; width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:12px; vertical-align:middle;"></i>
-                    <span style="color:#000; font-weight:600;">MGIT Load Destination</span>
-                </div>
-            </div>
-            """
-            m.get_root().html.add_child(folium.Element(legend_html))
-
-            st_folium(m, width="100%", height=600, key=f"map_{selected_asset}")
-    else:
-        st.error("Missing required columns: 'Asset Name', 'Latitude', or 'Longitude'.")
