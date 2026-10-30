@@ -68,7 +68,7 @@ if df is not None:
             m = folium.Map(
                 location=[center_lat, center_lon],
                 zoom_start=8,
-                tiles="CartoDB positron"  # Light realistic basemap
+                tiles="OpenStreetMap"
             )
 
             # Draw crimson route lines
