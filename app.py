@@ -7,6 +7,23 @@ import base64
 
 st.set_page_config(page_title="Route Map App", layout="wide")
 
+# Custom CSS to ensure prompts, labels, and text elements are always clearly visible
+st.markdown("""
+    <style>
+    /* Ensure text prompts and input labels are crisp and visible */
+    .stSelectbox label, .stFileUploader label, .stMarkdown p {
+        color: #FFFFFF !important;
+        font-weight: 500 !important;
+    }
+    /* Info box styling */
+    div[data-testid="stNotification"] {
+        background-color: #1E293B !important;
+        border: 1px solid #334155 !important;
+        color: #F8FAFC !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("🗺️ Asset Route Map Navigator")
 
 DEFAULT_FILE = "route.xlsx"
@@ -70,55 +87,55 @@ if df is not None:
                 tiles="OpenStreetMap"
             )
 
-            # Categorize transmission routes by dam system keyword
+            # Separate dataframe by network keywords
             srisailam_df = df[df["name"].str.contains("Srisailam|Srisailm|srisailam", case=False, na=False)]
             nsagar_df = df[df["name"].str.contains("Nagarjuna|Nagarjunasagar|nagarjuna", case=False, na=False)]
+            mgit_df = df[df["name"].str.contains("MGIT|Mahatma Gandhi", case=False, na=False)]
 
-            # 1. Draw Srisailam Transmission Route (Red Line)
+            # Locate MGIT coordinate as central termination point
+            mgit_coord = mgit_df[["lat", "lon"]].values.tolist() if not mgit_df.empty else []
+
+            # 1. Srisailam Route to MGIT (Red Line)
             if not srisailam_df.empty:
-                srisailam_coords = srisailam_df[["lat", "lon"]].values.tolist()
+                s_coords = srisailam_df[["lat", "lon"]].values.tolist()
+                if mgit_coord and mgit_coord[0] not in s_coords:
+                    s_coords.append(mgit_coord[0])  # Connect directly to MGIT
                 folium.PolyLine(
-                    srisailam_coords,
+                    s_coords,
                     color="#E63946",  # Red
                     weight=5,
                     opacity=0.9,
-                    tooltip="Transmission Route: Srisailam Network"
+                    tooltip="Srisailam ➔ MGIT Transmission Line"
                 ).add_to(m)
 
-            # 2. Draw Nagarjuna Sagar Transmission Route (Blue Line)
+            # 2. Nagarjuna Sagar Route to MGIT (Deep Blue Line)
             if not nsagar_df.empty:
-                nsagar_coords = nsagar_df[["lat", "lon"]].values.tolist()
+                ns_coords = nsagar_df[["lat", "lon"]].values.tolist()
+                if mgit_coord and mgit_coord[0] not in ns_coords:
+                    ns_coords.append(mgit_coord[0])  # Connect directly to MGIT
                 folium.PolyLine(
-                    nsagar_coords,
+                    ns_coords,
                     color="#1D3557",  # Deep Blue
                     weight=5,
                     opacity=0.9,
-                    tooltip="Transmission Route: Nagarjuna Sagar Network"
+                    tooltip="Nagarjuna Sagar ➔ MGIT Transmission Line"
                 ).add_to(m)
 
-            # 3. Fallback: Draw remaining route line segments in Purple
-            other_coords = df[["lat", "lon"]].values.tolist()
-            folium.PolyLine(
-                other_coords,
-                color="#8A2BE2",  # Purple for full route continuity
-                weight=3,
-                opacity=0.5,
-                dash_array="5, 10",
-                tooltip="Main Interconnecting Route"
-            ).add_to(m)
-
-            # Add markers with color matching their network
+            # 3. Add markers for each asset
             for idx, row in df.iterrows():
                 asset_name = str(row["name"]).lower()
-                if "srisailam" in asset_name:
-                    marker_color = "#E63946"  # Red for Srisailam
+                if "mgit" in asset_name or "mahatma gandhi" in asset_name:
+                    marker_color = "#2A9D8F"  # Teal highlight for MGIT load center
+                    net_label = "Central Load Destination (MGIT)"
+                elif "srisailam" in asset_name:
+                    marker_color = "#E63946"  # Red for Srisailam Network
                     net_label = "Srisailam Network"
                 elif "nagarjuna" in asset_name:
-                    marker_color = "#1D3557"  # Deep Blue for Nagarjuna Sagar
+                    marker_color = "#1D3557"  # Deep Blue for Nagarjuna Sagar Network
                     net_label = "Nagarjuna Sagar Network"
                 else:
-                    marker_color = "#457B9D"  # Teal for interconnected grid stations
-                    net_label = "Grid Substation / Load Center"
+                    marker_color = "#457B9D"  # Blue for intermediate grid substations
+                    net_label = "Grid Substation"
 
                 img_src = get_image_base64(row)
                 if img_src:
@@ -137,7 +154,7 @@ if df is not None:
 
                 folium.CircleMarker(
                     location=[row["lat"], row["lon"]],
-                    radius=7,
+                    radius=8 if "mgit" in asset_name else 6,
                     color=marker_color,
                     fill=True,
                     fill_color=marker_color,
@@ -146,18 +163,25 @@ if df is not None:
                     popup=folium.Popup(tooltip_html, max_width=220)
                 ).add_to(m)
 
-            # Add HTML Map Legend
+            # High-Contrast Map Legend
             legend_html = """
-            <div style="position: fixed; bottom: 30px; left: 30px; width: 250px; height: 130px; 
-                        background-color: white; border:2px solid #ccc; z-index:9999; font-size:13px;
-                        padding: 10px; border-radius: 8px; box-shadow: 2px 2px 6px rgba(0,0,0,0.2);">
-                <b style="font-size:14px;">Transmission Legend</b><br>
-                <i style="background:#E63946; width:20px; height:4px; display:inline-block; margin-right:8px;"></i>
-                <b>Srisailam Network</b> (Red)<br>
-                <i style="background:#1D3557; width:20px; height:4px; display:inline-block; margin-right:8px;"></i>
-                <b>Nagarjuna Sagar</b> (Blue)<br>
-                <i style="background:#8A2BE2; width:20px; height:2px; display:inline-block; margin-right:8px;"></i>
-                <i>Interconnecting Grid Path</i>
+            <div style="position: fixed; bottom: 30px; left: 30px; width: 250px; 
+                        background-color: rgba(255, 255, 255, 0.95); border: 2px solid #333; z-index: 9999; 
+                        font-family: Arial, sans-serif; font-size: 13px; color: #111;
+                        padding: 10px 14px; border-radius: 8px; box-shadow: 2px 2px 8px rgba(0,0,0,0.3);">
+                <b style="font-size:14px; color:#000; display:block; margin-bottom:8px;">Transmission Routes</b>
+                <div style="margin-bottom: 6px;">
+                    <i style="background:#E63946; width:18px; height:4px; display:inline-block; margin-right:8px; vertical-align:middle;"></i>
+                    <span style="color:#000; font-weight:600;">Srisailam ➔ MGIT</span>
+                </div>
+                <div style="margin-bottom: 6px;">
+                    <i style="background:#1D3557; width:18px; height:4px; display:inline-block; margin-right:8px; vertical-align:middle;"></i>
+                    <span style="color:#000; font-weight:600;">Nagarjuna Sagar ➔ MGIT</span>
+                </div>
+                <div>
+                    <i style="background:#2A9D8F; width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:12px; vertical-align:middle;"></i>
+                    <span style="color:#000; font-weight:600;">MGIT Load Destination</span>
+                </div>
             </div>
             """
             m.get_root().html.add_child(folium.Element(legend_html))
