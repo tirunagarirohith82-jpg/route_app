@@ -121,7 +121,7 @@ if df is not None:
                     tooltip="Nagarjuna Sagar ➔ MGIT Transmission Line"
                 ).add_to(m)
 
-            # 3. Add markers for EVERY asset with permanent image tooltips
+            # 3. Add markers with hover and click image cards
             for idx, row in df.iterrows():
                 asset_name = str(row["name"]).lower()
                 if "mgit" in asset_name or "mahatma gandhi" in asset_name:
@@ -139,11 +139,11 @@ if df is not None:
 
                 img_src = get_image_base64(row)
                 if img_src:
-                    img_html = f'<img src="{img_src}" style="width:160px;height:100px;object-fit:cover;border-radius:6px;margin-top:5px;" />'
+                    img_html = f'<img src="{img_src}" style="width:180px;height:120px;object-fit:cover;border-radius:6px;margin-top:5px;" />'
                 else:
                     img_html = '<div style="color:gray;font-size:12px;">Image not found</div>'
 
-                tooltip_html = f"""
+                card_html = f"""
                 <div style="font-family: Arial, sans-serif; padding: 2px;">
                     <b style="font-size:13px; color:{marker_color};">{row['name']}</b><br/>
                     <span style="font-size:11px; color:#333;"><b>Network:</b> {net_label}</span><br/>
@@ -152,7 +152,7 @@ if df is not None:
                 </div>
                 """
 
-                # Correctly closed CircleMarker definition
+                # Tooltip opens on hover (sticky=True); Popup locks permanently when clicked
                 folium.CircleMarker(
                     location=[row["lat"], row["lon"]],
                     radius=8 if "mgit" in asset_name else 6,
@@ -160,8 +160,8 @@ if df is not None:
                     fill=True,
                     fill_color=marker_color,
                     fill_opacity=0.9,
-                    tooltip=folium.Tooltip(tooltip_html, permanent=True, direction="top"),
-                    popup=folium.Popup(tooltip_html, max_width=220)
+                    tooltip=folium.Tooltip(card_html, sticky=True),
+                    popup=folium.Popup(card_html, max_width=220)
                 ).add_to(m)
 
             # High-Contrast Map Legend
