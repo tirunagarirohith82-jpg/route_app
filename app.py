@@ -152,10 +152,56 @@ if df is not None:
                 </div>
                 """
 
-                # permanent=True shows the card permanently for all points on map load
+                # Correctly closed CircleMarker definition
                 folium.CircleMarker(
                     location=[row["lat"], row["lon"]],
                     radius=8 if "mgit" in asset_name else 6,
                     color=marker_color,
                     fill=True,
-                    fill_color=
+                    fill_color=marker_color,
+                    fill_opacity=0.9,
+                    tooltip=folium.Tooltip(tooltip_html, permanent=True, direction="top"),
+                    popup=folium.Popup(tooltip_html, max_width=220)
+                ).add_to(m)
+
+            # High-Contrast Map Legend
+            legend_html = """
+            <div style="position: fixed; bottom: 30px; left: 30px; width: 250px; 
+                        background-color: rgba(255, 255, 255, 0.95); border: 2px solid #333; z-index: 9999; 
+                        font-family: Arial, sans-serif; font-size: 13px; color: #111;
+                        padding: 10px 14px; border-radius: 8px; box-shadow: 2px 2px 8px rgba(0,0,0,0.3);">
+                <b style="font-size:14px; color:#000; display:block; margin-bottom:8px;">Transmission Routes</b>
+                <div style="margin-bottom: 6px;">
+                    <i style="background:#E63946; width:18px; height:4px; display:inline-block; margin-right:8px; vertical-align:middle;"></i>
+                    <span style="color:#000; font-weight:600;">Srisailam ➔ MGIT</span>
+                </div>
+                <div style="margin-bottom: 6px;">
+                    <i style="background:#1D3557; width:18px; height:4px; display:inline-block; margin-right:8px; vertical-align:middle;"></i>
+                    <span style="color:#000; font-weight:600;">Nagarjuna Sagar ➔ MGIT</span>
+                </div>
+                <div>
+                    <i style="background:#2A9D8F; width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:12px; vertical-align:middle;"></i>
+                    <span style="color:#000; font-weight:600;">MGIT Load Destination</span>
+                </div>
+            </div>
+            """
+            m.get_root().html.add_child(folium.Element(legend_html))
+
+            st_folium(m, width="100%", height=600)
+
+        with col2:
+            st.subheader("🖼️ Selected Asset Details")
+            selected_asset = st.selectbox("Select an Asset to inspect:", df["name"].unique())
+            
+            asset_info = df[df["name"] == selected_asset].iloc[0]
+            st.write(f"**Asset Type:** {asset_info.get('type', 'N/A')}")
+            st.write(f"**Latitude:** {asset_info['lat']}")
+            st.write(f"**Longitude:** {asset_info['lon']}")
+
+            img_src = get_image_base64(asset_info)
+            if img_src:
+                st.image(img_src, caption=asset_info["name"], use_container_width=True)
+            else:
+                st.warning("Image file not found in the `images` folder.")
+    else:
+        st.error("Missing required columns: 'Asset Name', 'Latitude', or 'Longitude'.")
