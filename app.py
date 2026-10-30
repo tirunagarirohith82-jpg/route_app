@@ -61,7 +61,6 @@ if df is not None:
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            # Create interactive Folium map centered on assets
             center_lat = df["lat"].mean()
             center_lon = df["lon"].mean()
             
@@ -71,21 +70,57 @@ if df is not None:
                 tiles="OpenStreetMap"
             )
 
-            # Draw crimson route lines
-            coords = df[["lat", "lon"]].values.tolist()
+            # Categorize transmission routes by dam system keyword
+            srisailam_df = df[df["name"].str.contains("Srisailam|Srisailm|srisailam", case=False, na=False)]
+            nsagar_df = df[df["name"].str.contains("Nagarjuna|Nagarjunasagar|nagarjuna", case=False, na=False)]
+
+            # 1. Draw Srisailam Transmission Route (Red Line)
+            if not srisailam_df.empty:
+                srisailam_coords = srisailam_df[["lat", "lon"]].values.tolist()
+                folium.PolyLine(
+                    srisailam_coords,
+                    color="#E63946",  # Red
+                    weight=5,
+                    opacity=0.9,
+                    tooltip="Transmission Route: Srisailam Network"
+                ).add_to(m)
+
+            # 2. Draw Nagarjuna Sagar Transmission Route (Blue Line)
+            if not nsagar_df.empty:
+                nsagar_coords = nsagar_df[["lat", "lon"]].values.tolist()
+                folium.PolyLine(
+                    nsagar_coords,
+                    color="#1D3557",  # Deep Blue
+                    weight=5,
+                    opacity=0.9,
+                    tooltip="Transmission Route: Nagarjuna Sagar Network"
+                ).add_to(m)
+
+            # 3. Fallback: Draw remaining route line segments in Purple
+            other_coords = df[["lat", "lon"]].values.tolist()
             folium.PolyLine(
-                coords,
-                color="#DC143C",
-                weight=4,
-                opacity=0.8,
-                tooltip="Asset Route Line"
+                other_coords,
+                color="#8A2BE2",  # Purple for full route continuity
+                weight=3,
+                opacity=0.5,
+                dash_array="5, 10",
+                tooltip="Main Interconnecting Route"
             ).add_to(m)
 
-            # Add markers with hover photo tooltips
+            # Add markers with color matching their network
             for idx, row in df.iterrows():
+                asset_name = str(row["name"]).lower()
+                if "srisailam" in asset_name:
+                    marker_color = "#E63946"  # Red for Srisailam
+                    net_label = "Srisailam Network"
+                elif "nagarjuna" in asset_name:
+                    marker_color = "#1D3557"  # Deep Blue for Nagarjuna Sagar
+                    net_label = "Nagarjuna Sagar Network"
+                else:
+                    marker_color = "#457B9D"  # Teal for interconnected grid stations
+                    net_label = "Grid Substation / Load Center"
+
                 img_src = get_image_base64(row)
-                
-                # HTML template for hover card / popup
                 if img_src:
                     img_html = f'<img src="{img_src}" style="width:180px;height:120px;object-fit:cover;border-radius:6px;margin-top:5px;" />'
                 else:
@@ -93,8 +128,9 @@ if df is not None:
 
                 tooltip_html = f"""
                 <div style="font-family: Arial, sans-serif; padding: 4px;">
-                    <b style="font-size:14px; color:#0066CC;">{row['name']}</b><br/>
-                    <span style="font-size:12px; color:#555;">Type: {row.get('type', 'N/A')}</span><br/>
+                    <b style="font-size:14px; color:{marker_color};">{row['name']}</b><br/>
+                    <span style="font-size:12px; color:#333;"><b>Network:</b> {net_label}</span><br/>
+                    <span style="font-size:12px; color:#555;"><b>Type:</b> {row.get('type', 'N/A')}</span><br/>
                     {img_html}
                 </div>
                 """
@@ -102,15 +138,30 @@ if df is not None:
                 folium.CircleMarker(
                     location=[row["lat"], row["lon"]],
                     radius=7,
-                    color="#0066CC",
+                    color=marker_color,
                     fill=True,
-                    fill_color="#0066CC",
+                    fill_color=marker_color,
                     fill_opacity=0.9,
                     tooltip=folium.Tooltip(tooltip_html, sticky=True),
                     popup=folium.Popup(tooltip_html, max_width=220)
                 ).add_to(m)
 
-            # Render map on Streamlit
+            # Add HTML Map Legend
+            legend_html = """
+            <div style="position: fixed; bottom: 30px; left: 30px; width: 250px; height: 130px; 
+                        background-color: white; border:2px solid #ccc; z-index:9999; font-size:13px;
+                        padding: 10px; border-radius: 8px; box-shadow: 2px 2px 6px rgba(0,0,0,0.2);">
+                <b style="font-size:14px;">Transmission Legend</b><br>
+                <i style="background:#E63946; width:20px; height:4px; display:inline-block; margin-right:8px;"></i>
+                <b>Srisailam Network</b> (Red)<br>
+                <i style="background:#1D3557; width:20px; height:4px; display:inline-block; margin-right:8px;"></i>
+                <b>Nagarjuna Sagar</b> (Blue)<br>
+                <i style="background:#8A2BE2; width:20px; height:2px; display:inline-block; margin-right:8px;"></i>
+                <i>Interconnecting Grid Path</i>
+            </div>
+            """
+            m.get_root().html.add_child(folium.Element(legend_html))
+
             st_folium(m, width="100%", height=550)
 
         with col2:
