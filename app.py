@@ -93,16 +93,17 @@ if df is not None:
             st.write(f"**Latitude:** {asset_info['lat']}")
             st.write(f"**Longitude:** {asset_info['lon']}")
 
-            # Smart image lookup (handles spaces, underscores, typos, case differences)
+            # Ultra-robust image lookup (handles .jpg.jpg double extensions, spaces, typos, and casing)
             raw_img_name = str(asset_info.get('image_path', '')).strip()
             img_file = os.path.basename(raw_img_name)
             
-            clean_target = img_file.lower().replace(" ", "").replace("_", "")
+            # Base target without extension or spaces
+            clean_target = "".join(img_file.lower().replace(".jpg", "").replace(".png", "").replace(".jpeg", "").split()).replace("_", "")
             
             found_path = None
             if os.path.exists("images"):
                 for file in os.listdir("images"):
-                    clean_file = file.lower().replace(" ", "").replace("_", "")
+                    clean_file = "".join(file.lower().replace(".jpg", "").replace(".png", "").replace(".jpeg", "").split()).replace("_", "")
                     if clean_file == clean_target:
                         found_path = os.path.join("images", file)
                         break
@@ -110,8 +111,4 @@ if df is not None:
             if found_path and os.path.exists(found_path):
                 st.image(found_path, caption=asset_info["name"], use_container_width=True)
             elif raw_img_name.startswith("http"):
-                st.image(raw_img_name, caption=asset_info["name"], use_container_width=True)
-            else:
-                st.warning(f"Image file `{img_file}` not found in the `images` folder.")
-    else:
-        st.error("Missing required columns: 'Asset Name', 'Latitude', or 'Longitude'.")
+                st.image(raw_
