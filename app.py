@@ -10,12 +10,12 @@ st.title("🗺️ Asset Route Map Navigator")
 DEFAULT_FILE = "route.xlsx"
 df = None
 
-# 1. Automatically load route.xlsx if it exists in the app directory
+# 1. Automatically load route.xlsx if present in directory
 if os.path.exists(DEFAULT_FILE):
     df = pd.read_excel(DEFAULT_FILE)
     st.info(f"📁 Automatically loaded default file: `{DEFAULT_FILE}`")
 
-# 2. Allow uploading a different file if needed
+# 2. Optional file uploader fallback
 uploaded_file = st.file_uploader("Or upload a different Excel file (.xlsx)", type=["xlsx"])
 if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
@@ -37,7 +37,7 @@ if df is not None:
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            # Route line connections between consecutive coordinates
+            # Construct line segments between sequential points
             path_data = [
                 {
                     "path": [
@@ -93,14 +93,22 @@ if df is not None:
             st.write(f"**Latitude:** {asset_info['lat']}")
             st.write(f"**Longitude:** {asset_info['lon']}")
 
-            # Clean and match image filename
+            # Smart image lookup (handles spaces, underscores, typos, case differences)
             raw_img_name = str(asset_info.get('image_path', '')).strip()
             img_file = os.path.basename(raw_img_name)
-            local_img_path = os.path.join("images", img_file)
             
-            # Check local file or URL
-            if os.path.exists(local_img_path):
-                st.image(local_img_path, caption=asset_info["name"], use_container_width=True)
+            clean_target = img_file.lower().replace(" ", "").replace("_", "")
+            
+            found_path = None
+            if os.path.exists("images"):
+                for file in os.listdir("images"):
+                    clean_file = file.lower().replace(" ", "").replace("_", "")
+                    if clean_file == clean_target:
+                        found_path = os.path.join("images", file)
+                        break
+
+            if found_path and os.path.exists(found_path):
+                st.image(found_path, caption=asset_info["name"], use_container_width=True)
             elif raw_img_name.startswith("http"):
                 st.image(raw_img_name, caption=asset_info["name"], use_container_width=True)
             else:
