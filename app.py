@@ -10,12 +10,12 @@ st.title("🗺️ Asset Route Map Navigator")
 DEFAULT_FILE = "route.xlsx"
 df = None
 
-# 1. Automatically load route.xlsx if it exists in the app folder
+# 1. Automatically load route.xlsx if it exists in the app directory
 if os.path.exists(DEFAULT_FILE):
     df = pd.read_excel(DEFAULT_FILE)
     st.info(f"📁 Automatically loaded default file: `{DEFAULT_FILE}`")
 
-# 2. Allow uploading a new file if needed
+# 2. Allow uploading a different file if needed
 uploaded_file = st.file_uploader("Or upload a different Excel file (.xlsx)", type=["xlsx"])
 if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
@@ -37,7 +37,7 @@ if df is not None:
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            # Lines connecting waypoints
+            # Route line connections between consecutive coordinates
             path_data = [
                 {
                     "path": [
@@ -53,7 +53,7 @@ if df is not None:
                 "PathLayer",
                 data=path_data,
                 get_path="path",
-                get_color=[255, 60, 60, 220],
+                get_color=[220, 20, 60, 225],  # Crimson route line
                 width_scale=20,
                 width_min_pixels=4,
             )
@@ -62,8 +62,8 @@ if df is not None:
                 "ScatterplotLayer",
                 data=df,
                 get_position=["lon", "lat"],
-                get_fill_color=[0, 128, 255, 200],
-                get_radius=5000,
+                get_fill_color=[0, 102, 204, 200],  # Blue asset markers
+                get_radius=4000,
                 pickable=True,
             )
 
@@ -71,11 +71,13 @@ if df is not None:
                 latitude=df["lat"].mean(),
                 longitude=df["lon"].mean(),
                 zoom=7,
-                pitch=30,
+                pitch=0,
             )
 
+            # Map rendering using light street basemap
             st.pydeck_chart(
                 pdk.Deck(
+                    map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
                     layers=[line_layer, scatterplot_layer],
                     initial_view_state=view_state,
                     tooltip={"text": "Asset: {name}\nType: {type}"},
@@ -91,14 +93,16 @@ if df is not None:
             st.write(f"**Latitude:** {asset_info['lat']}")
             st.write(f"**Longitude:** {asset_info['lon']}")
 
-            # Find local image file
-            img_file = os.path.basename(str(asset_info.get('image_path', '')))
+            # Clean and match image filename
+            raw_img_name = str(asset_info.get('image_path', '')).strip()
+            img_file = os.path.basename(raw_img_name)
             local_img_path = os.path.join("images", img_file)
             
+            # Check local file or URL
             if os.path.exists(local_img_path):
                 st.image(local_img_path, caption=asset_info["name"], use_container_width=True)
-            elif str(asset_info.get('image_path', '')).startswith("http"):
-                st.image(asset_info['image_path'], caption=asset_info["name"], use_container_width=True)
+            elif raw_img_name.startswith("http"):
+                st.image(raw_img_name, caption=asset_info["name"], use_container_width=True)
             else:
                 st.warning(f"Image file `{img_file}` not found in the `images` folder.")
     else:
