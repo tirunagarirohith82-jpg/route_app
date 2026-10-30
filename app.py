@@ -77,13 +77,30 @@ if df is not None:
 
         col1, col2 = st.columns([2, 1])
 
+        # Move asset selection to the top of column 2 so map view reacts to it
+        with col2:
+            st.subheader("🖼️ Selected Asset Details")
+            selected_asset = st.selectbox("Select an Asset to inspect:", df["name"].unique())
+            
+            asset_info = df[df["name"] == selected_asset].iloc[0]
+            st.write(f"**Asset Type:** {asset_info.get('type', 'N/A')}")
+            st.write(f"**Latitude:** {asset_info['lat']}")
+            st.write(f"**Longitude:** {asset_info['lon']}")
+
+            img_src = get_image_base64(asset_info)
+            if img_src:
+                st.image(img_src, caption=asset_info["name"], use_container_width=True)
+            else:
+                st.warning("Image file not found in the `images` folder.")
+
         with col1:
-            center_lat = df["lat"].mean()
-            center_lon = df["lon"].mean()
+            # Dynamically set map center to the selected asset's coordinates and zoom in
+            center_lat = asset_info["lat"]
+            center_lon = asset_info["lon"]
             
             m = folium.Map(
                 location=[center_lat, center_lon],
-                zoom_start=8,
+                zoom_start=12,  # Auto-zoomed focused view on selected asset
                 tiles="OpenStreetMap"
             )
 
@@ -99,7 +116,7 @@ if df is not None:
             if not srisailam_df.empty:
                 s_coords = srisailam_df[["lat", "lon"]].values.tolist()
                 if mgit_coord and mgit_coord[0] not in s_coords:
-                    s_coords.append(mgit_coord[0])  # Connect directly to MGIT
+                    s_coords.append(mgit_coord[0])
                 folium.PolyLine(
                     s_coords,
                     color="#E63946",  # Red
@@ -112,7 +129,7 @@ if df is not None:
             if not nsagar_df.empty:
                 ns_coords = nsagar_df[["lat", "lon"]].values.tolist()
                 if mgit_coord and mgit_coord[0] not in ns_coords:
-                    ns_coords.append(mgit_coord[0])  # Connect directly to MGIT
+                    ns_coords.append(mgit_coord[0])
                 folium.PolyLine(
                     ns_coords,
                     color="#1D3557",  # Deep Blue
@@ -121,25 +138,27 @@ if df is not None:
                     tooltip="Nagarjuna Sagar ➔ MGIT Transmission Line"
                 ).add_to(m)
 
-            # 3. Add markers with hover and click image cards
+            # 3. Add markers with hover and auto-opened popup for selected asset
             for idx, row in df.iterrows():
                 asset_name = str(row["name"]).lower()
+                is_selected = (row["name"] == selected_asset)
+
                 if "mgit" in asset_name or "mahatma gandhi" in asset_name:
-                    marker_color = "#2A9D8F"  # Teal highlight for MGIT load center
+                    marker_color = "#2A9D8F"
                     net_label = "Central Load Destination (MGIT)"
                 elif "srisailam" in asset_name:
-                    marker_color = "#E63946"  # Red for Srisailam Network
+                    marker_color = "#E63946"
                     net_label = "Srisailam Network"
                 elif "nagarjuna" in asset_name:
-                    marker_color = "#1D3557"  # Deep Blue for Nagarjuna Sagar Network
+                    marker_color = "#1D3557"
                     net_label = "Nagarjuna Sagar Network"
                 else:
-                    marker_color = "#457B9D"  # Blue for intermediate grid substations
+                    marker_color = "#457B9D"
                     net_label = "Grid Substation"
 
-                img_src = get_image_base64(row)
-                if img_src:
-                    img_html = f'<img src="{img_src}" style="width:180px;height:120px;object-fit:cover;border-radius:6px;margin-top:5px;" />'
+                marker_img_src = get_image_base64(row)
+                if marker_img_src:
+                    img_html = f'<img src="{marker_img_src}" style="width:180px;height:120px;object-fit:cover;border-radius:6px;margin-top:5px;" />'
                 else:
                     img_html = '<div style="color:gray;font-size:12px;">Image not found</div>'
 
@@ -152,16 +171,18 @@ if df is not None:
                 </div>
                 """
 
-                # Tooltip opens on hover (sticky=True); Popup locks permanently when clicked
+                # Highlight selected marker and open popup automatically
+                popup_obj = folium.Popup(card_html, max_width=220, show=is_selected)
+
                 folium.CircleMarker(
                     location=[row["lat"], row["lon"]],
-                    radius=8 if "mgit" in asset_name else 6,
-                    color=marker_color,
+                    radius=12 if is_selected else (8 if "mgit" in asset_name else 6),
+                    color="#FFD700" if is_selected else marker_color,  # Gold border highlight for selected asset
                     fill=True,
                     fill_color=marker_color,
-                    fill_opacity=0.9,
+                    fill_opacity=1.0 if is_selected else 0.8,
                     tooltip=folium.Tooltip(card_html, sticky=True),
-                    popup=folium.Popup(card_html, max_width=220)
+                    popup=popup_obj
                 ).add_to(m)
 
             # High-Contrast Map Legend
@@ -187,21 +208,6 @@ if df is not None:
             """
             m.get_root().html.add_child(folium.Element(legend_html))
 
-            st_folium(m, width="100%", height=600)
-
-        with col2:
-            st.subheader("🖼️ Selected Asset Details")
-            selected_asset = st.selectbox("Select an Asset to inspect:", df["name"].unique())
-            
-            asset_info = df[df["name"] == selected_asset].iloc[0]
-            st.write(f"**Asset Type:** {asset_info.get('type', 'N/A')}")
-            st.write(f"**Latitude:** {asset_info['lat']}")
-            st.write(f"**Longitude:** {asset_info['lon']}")
-
-            img_src = get_image_base64(asset_info)
-            if img_src:
-                st.image(img_src, caption=asset_info["name"], use_container_width=True)
-            else:
-                st.warning("Image file not found in the `images` folder.")
+            st_folium(m, width="100%", height=600, key=f"map_{selected_asset}")
     else:
         st.error("Missing required columns: 'Asset Name', 'Latitude', or 'Longitude'.")
