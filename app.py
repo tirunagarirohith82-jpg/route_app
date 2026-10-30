@@ -76,7 +76,7 @@ if df is not None:
         st.success(f"Successfully loaded {len(df)} asset locations!")
 
         # Initialize session state for synced asset selection across map clicks and selectbox
-        if "selected_asset" not in st.session_state:
+        if "selected_asset" not in st.session_state or st.session_state.selected_asset not in df["name"].values:
             st.session_state.selected_asset = df["name"].iloc[0]
 
         col1, col2 = st.columns([2, 1])
@@ -172,7 +172,7 @@ if df is not None:
                     popup=popup_obj
                 ).add_to(m)
 
-            # High-Contrast Map Legend
+            # Properly terminated multiline HTML legend string
             legend_html = """
             <div style="position: fixed; bottom: 30px; left: 30px; width: 250px; 
                         background-color: rgba(255, 255, 255, 0.95); border: 2px solid #333; z-index: 9999; 
@@ -182,3 +182,52 @@ if df is not None:
                 <div style="margin-bottom: 6px;">
                     <i style="background:#E63946; width:18px; height:4px; display:inline-block; margin-right:8px; vertical-align:middle;"></i>
                     <span style="color:#000; font-weight:600;">Srisailam ➔ MGIT</span>
+                </div>
+                <div style="margin-bottom: 6px;">
+                    <i style="background:#1D3557; width:18px; height:4px; display:inline-block; margin-right:8px; vertical-align:middle;"></i>
+                    <span style="color:#000; font-weight:600;">Nagarjuna Sagar ➔ MGIT</span>
+                </div>
+                <div>
+                    <i style="background:#2A9D8F; width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:12px; vertical-align:middle;"></i>
+                    <span style="color:#000; font-weight:600;">MGIT Load Destination</span>
+                </div>
+            </div>
+            """
+            m.get_root().html.add_child(folium.Element(legend_html))
+
+            # Render map and catch click events
+            map_data = st_folium(m, width="100%", height=600, key=f"map_{st.session_state.selected_asset}")
+
+            # Update session state if user clicks a marker directly on the map
+            if map_data and map_data.get("last_object_clicked_popup"):
+                clicked_popup = map_data["last_object_clicked_popup"]
+                for name in df["name"].unique():
+                    if name in clicked_popup and name != st.session_state.selected_asset:
+                        st.session_state.selected_asset = name
+                        st.rerun()
+
+        with col2:
+            st.subheader("🖼️ Selected Asset Details")
+            
+            # Selectbox bound to session state for seamless two-way interaction
+            selected = st.selectbox(
+                "Select an Asset to inspect:",
+                options=df["name"].unique(),
+                index=list(df["name"].unique()).index(st.session_state.selected_asset)
+            )
+
+            if selected != st.session_state.selected_asset:
+                st.session_state.selected_asset = selected
+                st.rerun()
+
+            st.write(f"**Asset Type:** {asset_info.get('type', 'N/A')}")
+            st.write(f"**Latitude:** {asset_info['lat']}")
+            st.write(f"**Longitude:** {asset_info['lon']}")
+
+            img_src = get_image_base64(asset_info)
+            if img_src:
+                st.image(img_src, caption=asset_info["name"], use_container_width=True)
+            else:
+                st.warning("Image file not found in the `images` folder.")
+    else:
+        st.error("Missing required columns: 'Asset Name', 'Latitude', or 'Longitude'.")
