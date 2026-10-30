@@ -7,7 +7,7 @@ import base64
 
 st.set_page_config(page_title="Route Map App", layout="wide")
 
-# Custom CSS for high-contrast UI and styling
+# Custom CSS to ensure prompts, labels, and text elements are crisp and visible
 st.markdown("""
     <style>
     .stSelectbox label, .stFileUploader label, .stMarkdown p {
@@ -19,39 +19,25 @@ st.markdown("""
         border: 1px solid #334155 !important;
         color: #F8FAFC !important;
     }
-    .flow-card {
-        background-color: #1E293B;
-        border-radius: 8px;
-        padding: 10px;
-        text-align: center;
-        border: 1px solid #334155;
-    }
-    .flow-title {
-        font-size: 13px;
-        font-weight: bold;
-        color: #60A5FA;
-        margin-bottom: 5px;
-    }
-    .flow-sub {
-        font-size: 11px;
-        color: #94A3B8;
-    }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🗺️ Asset Route Map & Power Transmission Flow")
+st.title("🗺️ Interactive Transmission Route Map")
 
 DEFAULT_FILE = "route.xlsx"
 df = None
 
+# 1. Automatically load default file
 if os.path.exists(DEFAULT_FILE):
     df = pd.read_excel(DEFAULT_FILE)
     st.info(f"📁 Automatically loaded default file: `{DEFAULT_FILE}`")
 
+# 2. File uploader fallback
 uploaded_file = st.file_uploader("Or upload a different Excel file (.xlsx)", type=["xlsx"])
 if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
 
+# Helper function to get base64 encoded image string
 def get_image_base64(asset_info):
     raw_img_name = str(asset_info.get('image_path', '')).strip()
     img_file = os.path.basename(raw_img_name)
@@ -87,6 +73,7 @@ if df is not None:
     if required_cols.issubset(df.columns):
         st.success(f"Successfully loaded {len(df)} asset locations!")
 
+        # Initialize session state for two-way synchronization
         if "selected_asset" not in st.session_state or st.session_state.selected_asset not in df["name"].values:
             st.session_state.selected_asset = None
 
@@ -109,12 +96,14 @@ if df is not None:
                 tiles="OpenStreetMap"
             )
 
+            # Separate transmission routes by system
             srisailam_df = df[df["name"].str.contains("Srisailam|Srisailm|srisailam", case=False, na=False)]
             nsagar_df = df[df["name"].str.contains("Nagarjuna|Nagarjunasagar|nagarjuna", case=False, na=False)]
             mgit_df = df[df["name"].str.contains("MGIT|Mahatma Gandhi", case=False, na=False)]
 
             mgit_coord = mgit_df[["lat", "lon"]].values.tolist() if not mgit_df.empty else []
 
+            # 1. Srisailam Route to MGIT (Red Line)
             if not srisailam_df.empty:
                 s_coords = srisailam_df[["lat", "lon"]].values.tolist()
                 if mgit_coord and mgit_coord[0] not in s_coords:
@@ -127,6 +116,7 @@ if df is not None:
                     tooltip="Srisailam ➔ MGIT Transmission Line"
                 ).add_to(m)
 
+            # 2. Nagarjuna Sagar Route to MGIT (Deep Blue Line)
             if not nsagar_df.empty:
                 ns_coords = nsagar_df[["lat", "lon"]].values.tolist()
                 if mgit_coord and mgit_coord[0] not in ns_coords:
@@ -139,6 +129,7 @@ if df is not None:
                     tooltip="Nagarjuna Sagar ➔ MGIT Transmission Line"
                 ).add_to(m)
 
+            # 3. Add Custom Photo Markers directly onto Map
             for idx, row in df.iterrows():
                 asset_name = str(row["name"]).lower()
                 is_selected = (row["name"] == st.session_state.selected_asset)
@@ -157,33 +148,52 @@ if df is not None:
                     net_label = "Grid Substation"
 
                 marker_img_src = get_image_base64(row)
+                
+                # Render photos as visual HTML Map Markers directly on the coordinates
                 if marker_img_src:
-                    img_html = f'<img src="{marker_img_src}" style="width:180px;height:120px;object-fit:cover;border-radius:6px;margin-top:5px;" />'
+                    icon_html = f"""
+                    <div style="
+                        width: 75px; 
+                        height: 55px; 
+                        border: 3px solid {marker_color}; 
+                        border-radius: 8px; 
+                        overflow: hidden; 
+                        box-shadow: 2px 2px 6px rgba(0,0,0,0.4);
+                        background-color: white;">
+                        <img src="{marker_img_src}" style="width:100%; height:100%; object-fit:cover;" />
+                    </div>
+                    """
+                    icon = folium.DivIcon(html=icon_html, icon_size=(75, 55), icon_anchor=(37, 27))
+                    
+                    popup_card = f"""
+                    <div style="font-family: Arial, sans-serif; padding: 2px;">
+                        <b style="font-size:13px; color:{marker_color};">{row['name']}</b><br/>
+                        <span style="font-size:11px; color:#333;"><b>Network:</b> {net_label}</span><br/>
+                        <span style="font-size:11px; color:#555;"><b>Type:</b> {row.get('type', 'N/A')}</span><br/>
+                        <img src="{marker_img_src}" style="width:180px;height:120px;object-fit:cover;border-radius:6px;margin-top:5px;" />
+                    </div>
+                    """
+
+                    folium.Marker(
+                        location=[row["lat"], row["lon"]],
+                        icon=icon,
+                        tooltip=folium.Tooltip(row["name"], sticky=True),
+                        popup=folium.Popup(popup_card, max_width=220, show=is_selected)
+                    ).add_to(m)
+
+                # Fallback to CircleMarker if image missing
                 else:
-                    img_html = '<div style="color:gray;font-size:12px;">Image not found</div>'
+                    folium.CircleMarker(
+                        location=[row["lat"], row["lon"]],
+                        radius=10 if is_selected else 6,
+                        color=marker_color,
+                        fill=True,
+                        fill_color=marker_color,
+                        fill_opacity=0.9,
+                        tooltip=folium.Tooltip(row["name"], sticky=True)
+                    ).add_to(m)
 
-                card_html = f"""
-                <div style="font-family: Arial, sans-serif; padding: 2px;">
-                    <b style="font-size:13px; color:{marker_color};">{row['name']}</b><br/>
-                    <span style="font-size:11px; color:#333;"><b>Network:</b> {net_label}</span><br/>
-                    <span style="font-size:11px; color:#555;"><b>Type:</b> {row.get('type', 'N/A')}</span><br/>
-                    {img_html}
-                </div>
-                """
-
-                popup_obj = folium.Popup(card_html, max_width=220, show=is_selected)
-
-                folium.CircleMarker(
-                    location=[row["lat"], row["lon"]],
-                    radius=12 if is_selected else (8 if "mgit" in asset_name else 6),
-                    color="#FFD700" if is_selected else marker_color,
-                    fill=True,
-                    fill_color=marker_color,
-                    fill_opacity=1.0 if is_selected else 0.8,
-                    tooltip=folium.Tooltip(card_html, sticky=True),
-                    popup=popup_obj
-                ).add_to(m)
-
+            # Map Legend Overlay
             legend_html = """
             <div style="position: fixed; bottom: 30px; left: 30px; width: 250px; 
                         background-color: rgba(255, 255, 255, 0.95); border: 2px solid #333; z-index: 9999; 
@@ -206,7 +216,7 @@ if df is not None:
             """
             m.get_root().html.add_child(folium.Element(legend_html))
 
-            map_data = st_folium(m, width="100%", height=550, key=f"map_{st.session_state.selected_asset}")
+            map_data = st_folium(m, width="100%", height=650, key=f"map_{st.session_state.selected_asset}")
 
             if map_data and map_data.get("last_object_clicked_popup"):
                 clicked_popup = map_data["last_object_clicked_popup"]
@@ -248,39 +258,5 @@ if df is not None:
                     st.image(img_src, caption=asset_info["name"], use_container_width=True)
                 else:
                     st.warning("Image file not found in the `images` folder.")
-
-        # --- STEP-BY-STEP TRANSMISSION FLOW BANNER (Matching Reference Infographic) ---
-        st.divider()
-        st.subheader("⚡ Step-by-Step Power Generation & Distribution Route")
-
-        flow_steps = [
-            ("1. Hydro Power Generation", "Srisailam / Nagarjuna Sagar Dam", "dam.jpg"),
-            ("2. Step-up Transformer", "Voltage stepped up (132/220/400 kV)", "transformer.jpg"),
-            ("3. 400 kV Transmission Line", "Long-distance transmission towers", "tower.jpg"),
-            ("4. Grid Substation", "400/220 kV Grid Substation", "grid.jpg"),
-            ("5. Distribution Substation", "33/11 kV Feeders near Gandipet", "substation.jpg"),
-            ("6. Local Lines & Poles", "11 kV Distribution Lines & Poles", "poles.jpg"),
-            ("7. MGIT College", "Receives 415 V / 230 V Power", "mgit.jpg")
-        ]
-
-        f_cols = st.columns(len(flow_steps))
-        for idx, (title, desc, default_img) in enumerate(flow_steps):
-            with f_cols[idx]:
-                st.markdown(f"""
-                <div class="flow-card">
-                    <div class="flow-title">{title}</div>
-                    <div class="flow-sub">{desc}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Check for corresponding asset image in df or folder
-                matched_row = df[df['name'].str.contains(title.split('.')[1].strip().split()[0], case=False, na=False)] if df is not None else None
-                img_url = get_image_base64(matched_row.iloc[0]) if matched_row is not None and not matched_row.empty else None
-                
-                if img_url:
-                    st.image(img_url, use_container_width=True)
-                else:
-                    st.caption("📷 Asset Photo")
-
     else:
         st.error("Missing required columns: 'Asset Name', 'Latitude', or 'Longitude'.")
