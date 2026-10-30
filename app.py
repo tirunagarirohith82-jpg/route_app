@@ -7,12 +7,21 @@ st.set_page_config(page_title="Route Map App", layout="wide")
 
 st.title("🗺️ Asset Route Map Navigator")
 
-uploaded_file = st.file_uploader("Upload your route Excel file (.xlsx)", type=["xlsx"])
+DEFAULT_FILE = "route.xlsx"
+df = None
 
+# 1. Automatically load route.xlsx if it exists in the app folder
+if os.path.exists(DEFAULT_FILE):
+    df = pd.read_excel(DEFAULT_FILE)
+    st.info(f"📁 Automatically loaded default file: `{DEFAULT_FILE}`")
+
+# 2. Allow uploading a new file if needed
+uploaded_file = st.file_uploader("Or upload a different Excel file (.xlsx)", type=["xlsx"])
 if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
 
-    # Clean and standardize column names
+if df is not None:
+    # Standardize column names
     df = df.rename(columns={
         "Asset Name": "name",
         "Latitude": "lat",
@@ -25,11 +34,10 @@ if uploaded_file is not None:
     if required_cols.issubset(df.columns):
         st.success(f"Successfully loaded {len(df)} asset locations!")
 
-        # Create two layout columns: Map on Left, Asset Details on Right
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            # Lines connecting consecutive waypoints
+            # Lines connecting waypoints
             path_data = [
                 {
                     "path": [
@@ -83,10 +91,8 @@ if uploaded_file is not None:
             st.write(f"**Latitude:** {asset_info['lat']}")
             st.write(f"**Longitude:** {asset_info['lon']}")
 
-            # Extract filename from path
+            # Find local image file
             img_file = os.path.basename(str(asset_info.get('image_path', '')))
-            
-            # Check if image exists inside an 'images' subfolder
             local_img_path = os.path.join("images", img_file)
             
             if os.path.exists(local_img_path):
@@ -95,6 +101,5 @@ if uploaded_file is not None:
                 st.image(asset_info['image_path'], caption=asset_info["name"], use_container_width=True)
             else:
                 st.warning(f"Image file `{img_file}` not found in the `images` folder.")
-
     else:
         st.error("Missing required columns: 'Asset Name', 'Latitude', or 'Longitude'.")
