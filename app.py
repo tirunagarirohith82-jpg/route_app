@@ -97,7 +97,7 @@ if df is not None:
             raw_img_name = str(asset_info.get('image_path', '')).strip()
             img_file = os.path.basename(raw_img_name)
             
-            # Base target without extension or spaces
+            # Base target without extensions or spaces
             clean_target = "".join(img_file.lower().replace(".jpg", "").replace(".png", "").replace(".jpeg", "").split()).replace("_", "")
             
             found_path = None
@@ -111,4 +111,8 @@ if df is not None:
             if found_path and os.path.exists(found_path):
                 st.image(found_path, caption=asset_info["name"], use_container_width=True)
             elif raw_img_name.startswith("http"):
-                st.image(raw_
+                st.image(raw_img_name, caption=asset_info["name"], use_container_width=True)
+            else:
+                st.warning(f"Image file `{img_file}` not found in the `images` folder.")
+    else:
+        st.error("Missing required columns: 'Asset Name', 'Latitude', or 'Longitude'.")
