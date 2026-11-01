@@ -27,15 +27,30 @@ st.title("🗺️ Asset Route Map Navigator")
 DEFAULT_FILE = "route.xlsx"
 df = None
 
-# 1. Automatically load default file
+# Helper function to safely read Excel files across pandas versions
+def safe_read_excel(file_source):
+    try:
+        return pd.read_excel(file_source, engine="openpyxl")
+    except Exception:
+        try:
+            return pd.read_excel(file_source)
+        except Exception as e:
+            st.error(f"Error reading Excel file: {e}")
+            return None
+
+# 1. Automatically load default file if present
 if os.path.exists(DEFAULT_FILE):
-    df = pd.read_excel(DEFAULT_FILE)
-    st.info(f"📁 Automatically loaded default file: `{DEFAULT_FILE}`")
+    loaded_df = safe_read_excel(DEFAULT_FILE)
+    if loaded_df is not None:
+        df = loaded_df
+        st.info(f"📁 Automatically loaded default file: `{DEFAULT_FILE}`")
 
 # 2. File uploader fallback
 uploaded_file = st.file_uploader("Or upload a different Excel file (.xlsx)", type=["xlsx"])
 if uploaded_file is not None:
-    df = pd.read_excel(uploaded_file)
+    uploaded_df = safe_read_excel(uploaded_file)
+    if uploaded_df is not None:
+        df = uploaded_df
 
 # Helper function to get base64 encoded image string for tooltips
 def get_image_base64(asset_info):
@@ -130,7 +145,7 @@ if df is not None:
                     tooltip="Nagarjuna Sagar ➔ MGIT Transmission Line"
                 ).add_to(m)
 
-            # 3. Clean Circle Markers (No clutter)
+            # 3. Clean Circle Markers
             for idx, row in df.iterrows():
                 asset_name = str(row["name"]).lower()
                 is_selected = (row["name"] == st.session_state.selected_asset)
